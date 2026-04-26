@@ -1,4 +1,4 @@
-package com.example.re0_studio_mobile
+package com.dq52099.re0_chanting
 
 import io.flutter.embedding.android.FlutterActivity
 
