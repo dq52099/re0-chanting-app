@@ -1,49 +1,55 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'gateway_client.dart';
-import 'dart:async';
+
+final sharedPrefsProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError();
+});
 
 final gatewayClientProvider = Provider<GatewayClient>((ref) {
-  // In a real app, these would come from environment variables or a config service
-  return GatewayClient(
-    baseUrl: 'https://api.re0-studio.io', 
-    apiKey: 'sk-re0-dummy-key',
-  );
+  return GatewayClient();
 });
 
-final manaProvider = StateProvider<int>((ref) => 5000);
+final authStateProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
 
-class ChantingNotifier extends AsyncNotifier<List<String>> {
-  @override
-  FutureOr<List<String>> build() {
-    return [];
-  }
+final manaProvider = StateProvider<Map<String, dynamic>>((ref) => {
+  'generate': {'remaining': 0, 'total': 0, 'used': 0},
+  'edit': {'remaining': 0, 'total': 0, 'used': 0},
+});
 
-  Future<void> chant(String spells, int count, String size) async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
-      final client = ref.read(gatewayClientProvider);
-      final response = await client.chant(
-        spells: spells,
-        count: count,
-        size: size,
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = response.data['data'];
-        final urls = data.map((e) => e['url'] as String).toList();
-        
-        // Decrement mana: 100 per image
-        final totalCost = count * 100;
-        ref.read(manaProvider.notifier).update((state) => state - totalCost);
-        
-        return [...state.value ?? [], ...urls];
-      } else {
-        throw Exception('咏唱失败: ${response.statusMessage}');
-      }
-    });
-  }
-}
-
-final chantingProvider = AsyncNotifierProvider<ChantingNotifier, List<String>>(() {
+final chantingProvider = AsyncNotifierProvider<ChantingNotifier, List<dynamic>>(() {
   return ChantingNotifier();
 });
+
+class ChantingNotifier extends AsyncNotifier<List<dynamic>> {
+  @override
+  Future<List<dynamic>> build() async => [];
+
+  Future<void> chant(String spells, int count, String size, String quality, String background) async {
+    state = const AsyncValue.loading();
+    try {
+      final client = ref.read(gatewayClientProvider);
+      final res = await client.chant(spells, count, size, quality, background);
+      ref.read(manaProvider.notifier).state = res['quota_summary'];
+      state = AsyncValue.data(res['data']);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> returnByDeath(String spells, String imagePath, int count, String size) async {
+    state = const AsyncValue.loading();
+    try {
+      final client = ref.read(gatewayClientProvider);
+      final res = await client.returnByDeath(spells, imagePath, count, size);
+      ref.read(manaProvider.notifier).state = res['quota_summary'];
+      state = AsyncValue.data(res['data']);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  void clear() {
+    state = const AsyncValue.data([]);
+  }
+}
